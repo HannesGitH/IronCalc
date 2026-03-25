@@ -63,6 +63,25 @@ pub fn get_milliseconds_since_epoch() -> i64 {
     Date::now() as i64
 }
 
+//
+pub(crate) enum CellStructure {
+    SingleCell,
+    ArrayFormula {
+        range: (i32, i32),
+    },
+    DynamicFormula {
+        range: (i32, i32),
+    },
+    SpillArray {
+        anchor: (i32, i32),
+        range: (i32, i32),
+    },
+    SpillDynamic {
+        anchor: (i32, i32),
+        range: (i32, i32),
+    },
+}
+
 /// A cell might be evaluated or being evaluated
 #[derive(Clone)]
 pub(crate) enum CellState {
@@ -1979,8 +1998,50 @@ impl<'a> Model<'a> {
         value: String,
     ) -> Result<(), String> {
         // we cannot write in cells that are part of an array formula
-        if self.cell_is_part_of_array_formula(sheet, row, column)? {
-            return Err("Cannot write in a cell that is part of an array formula".to_string());
+        match self.get_cell_structure(sheet, row, column)? {
+            CellStructure::SingleCell => {
+                // noop
+            },
+            CellStructure::ArrayFormula { range } => {
+                // noop
+            },
+            CellStructure::DynamicFormula { range } => {
+                // clear the spill of the dynamic formula
+                let (width, height) = range;
+                let ws = self.workbook.worksheet_mut(sheet)?;
+                for r in row..row + height {
+                    for c in column..column + width {
+                        if r == row && c == column {
+                            // Set an unevaluated dynamic formula in the anchor
+                            continue;
+                        }
+                        // We ignore errors here
+                        let _ = ws.cell_clear_contents(r, c);
+                    }
+                }
+            },
+            CellStructure::SpillArray { anchor: _, range: _ } => {
+                return Err("Cannot write in a cell that is part of an array formula".to_string());
+            }
+            CellStructure::SpillDynamic { anchor, range } => {
+                // It is part of a dynamic array formula, but it is not the anchor.
+                // We can write in it but we need to clear the spill
+                let (anchor_row, anchor_column) = anchor;
+                let (width, height) = range;
+                let ws = self.workbook.worksheet_mut(sheet)?;
+                for r in anchor_row..anchor_row + height {
+                    for c in anchor_column..anchor_column + width {
+                        if r == anchor_row && c == anchor_column {
+                            // Set an unevaluated dynamic formula in the anchor
+                            // self.set_cell_with_dynamic_formula(sheet, row, column, formula, style)?;
+                            todo!();
+                            continue;
+                        }
+                        // We ignore errors here
+                        let _ = ws.cell_clear_contents(r, c);
+                    }
+                }
+            }
         }
         // If value starts with "'" then we force the style to be quote_prefix
         let style_index = self.get_cell_style_index(sheet, row, column)?;
@@ -2073,7 +2134,7 @@ impl<'a> Model<'a> {
         height: i32,
         value: String,
     ) -> Result<(), String> {
-        if self.cell_is_part_of_array_formula(sheet, row, column)? {
+        if self.get_cell_structure(sheet, row, column)? {
             return Err("Cannot write in a cell that is part of an array formula".to_string());
         }
         // If value starts with "'" then we force the style to be quote_prefix
@@ -2144,14 +2205,14 @@ impl<'a> Model<'a> {
         Ok(())
     }
 
-    fn cell_is_part_of_array_formula(
+    fn get_cell_structure(
         &self,
         sheet: u32,
         row: i32,
         column: i32,
-    ) -> Result<bool, String> {
+    ) -> Result<CellStructure, String> {
         let worksheet = self.workbook.worksheet(sheet)?;
-        worksheet.is_part_of_array_formula(row, column)
+        worksheet.get_cell_structure(row, column)
     }
 
     fn set_cell_with_formula(
@@ -2537,7 +2598,7 @@ impl<'a> Model<'a> {
     /// # }
     /// ```
     pub fn cell_clear_contents(&mut self, sheet: u32, row: i32, column: i32) -> Result<(), String> {
-        if self.cell_is_part_of_array_formula(sheet, row, column)? {
+        if self.get_cell_structure(sheet, row, column)? {
             return Err("Cannot write in a cell that is part of an array formula".to_string());
         }
         self.workbook
@@ -2566,7 +2627,7 @@ impl<'a> Model<'a> {
     /// # Ok(())
     /// # }
     pub fn cell_clear_all(&mut self, sheet: u32, row: i32, column: i32) -> Result<(), String> {
-        if self.cell_is_part_of_array_formula(sheet, row, column)? {
+        if self.get_cell_structure(sheet, row, column)? {
             return Err("Cannot write in a cell that is part of an array formula".to_string());
         }
         let worksheet = self.workbook.worksheet_mut(sheet)?;

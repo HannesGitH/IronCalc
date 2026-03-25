@@ -70,6 +70,16 @@ impl Cell {
             Cell::CellFormulaNumber { f, .. } => Some(*f),
             Cell::CellFormulaString { f, .. } => Some(*f),
             Cell::CellFormulaError { f, .. } => Some(*f),
+            Cell::DynamicFormula { f, .. } => Some(*f),
+            Cell::DynamicFormulaBoolean { f, .. } => Some(*f),
+            Cell::DynamicFormulaNumber { f, .. } => Some(*f),
+            Cell::DynamicFormulaString { f, .. } => Some(*f),
+            Cell::DynamicFormulaError { f, .. } => Some(*f),
+            Cell::ArrayFormula { f, .. } => Some(*f),
+            Cell::ArrayFormulaBoolean { f, .. } => Some(*f),
+            Cell::ArrayFormulaNumber { f, .. } => Some(*f),
+            Cell::ArrayFormulaString { f, .. } => Some(*f),
+            Cell::ArrayFormulaError { f, .. } => Some(*f),
             _ => None,
         }
     }

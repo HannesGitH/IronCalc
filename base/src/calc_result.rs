@@ -9,6 +9,7 @@ pub struct Range {
 }
 
 #[derive(Clone)]
+#[cfg_attr(test, derive(Debug))]
 pub(crate) enum CalcResult {
     String(String),
     Number(f64),

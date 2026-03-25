@@ -1,6 +1,7 @@
 use crate::constants::{self, LAST_COLUMN, LAST_ROW};
 use crate::expressions::types::CellReferenceIndex;
 use crate::expressions::utils::{is_valid_column_number, is_valid_row};
+use crate::model::CellStructure;
 use crate::{expressions::token::Error, types::*};
 
 use std::collections::HashMap;
@@ -253,6 +254,23 @@ impl Worksheet {
         style: i32,
     ) -> Result<(), String> {
         let cell = Cell::new_formula(index, style);
+        self.update_cell(row, column, cell)
+    }
+
+    pub fn set_cell_with_dynamic_formula(
+        &mut self,
+        row: i32,
+        column: i32,
+        index: i32,
+        style: i32,
+        width: i32,
+        height: i32,
+    ) -> Result<(), String> {
+        let cell = Cell::DynamicFormula {
+            f: index,
+            s: style,
+            r: (width, height),
+        };
         self.update_cell(row, column, cell)
     }
 
@@ -750,17 +768,31 @@ impl Worksheet {
     }
 
     /// Returns true if cell is part of an array formula. This includes both anchor and spill cells.
-    pub fn is_part_of_array_formula(&self, row: i32, column: i32) -> Result<bool, String> {
+    pub fn get_cell_structure(&self, row: i32, column: i32) -> Result<CellStructure, String> {
         if !is_valid_column_number(column) || !is_valid_row(row) {
             return Err("Row or column is outside valid range.".to_string());
         }
 
         let cell = match self.cell(row, column) {
             Some(c) => c,
-            None => return Ok(false),
+            None => return Ok(CellStructure::SingleCell),
         };
         match cell {
-            Cell::SpillBoolean { a, .. }
+            Cell::ArrayFormula { r, .. }
+            | Cell::ArrayFormulaBoolean { r, .. }
+            | Cell::ArrayFormulaNumber { r, .. }
+            | Cell::ArrayFormulaString { r, .. }
+            | Cell::ArrayFormulaError { r, .. } => {
+                Ok(CellStructure::ArrayFormula { range: *r })
+            }
+            | Cell::DynamicFormula { r, .. }
+            | Cell::DynamicFormulaBoolean { r, .. }
+            | Cell::DynamicFormulaNumber { r, .. }
+            | Cell::DynamicFormulaString { r, .. }
+            | Cell::DynamicFormulaError { r, .. } => {
+                Ok(CellStructure::DynamicFormula { range: *r })
+            }
+            | Cell::SpillBoolean { a, .. }
             | Cell::SpillError { a, .. }
             | Cell::SpillNumber { a, .. }
             | Cell::SpillString { a, .. } => {
@@ -769,14 +801,50 @@ impl Worksheet {
                     None => return Err("Invalid spill reference".to_string()),
                 };
                 match anchor_cell {
-                    Cell::ArrayFormula { .. } => Ok(true),
-                    Cell::ArrayFormulaBoolean { .. } => Ok(true),
-                    Cell::ArrayFormulaNumber { .. } => Ok(true),
-                    Cell::ArrayFormulaString { .. } => Ok(true),
+                    Cell::ArrayFormula { r, .. } => Ok(CellStructure::SpillArray {
+                        anchor: (a.0, a.1),
+                        range: *r,
+                    }),
+                    Cell::ArrayFormulaBoolean { r, .. } => Ok(CellStructure::SpillArray {
+                        anchor: (a.0, a.1),
+                        range: *r,
+                    }),
+                    Cell::ArrayFormulaNumber { r, .. } => Ok(CellStructure::SpillArray {
+                        anchor: (a.0, a.1),
+                        range: *r,
+                    }),
+                    Cell::ArrayFormulaString { r, .. } => Ok(CellStructure::SpillArray {
+                        anchor: (a.0, a.1),
+                        range: *r,
+                    }),
+                    Cell::ArrayFormulaError { r, .. } => Ok(CellStructure::SpillArray {
+                        anchor: (a.0, a.1),
+                        range: *r,
+                    }),
+                    Cell::DynamicFormula { r, .. } => Ok(CellStructure::SpillDynamic {
+                        anchor: (a.0, a.1),
+                        range: *r,
+                    }),
+                    Cell::DynamicFormulaBoolean { r, .. } => Ok(CellStructure::SpillDynamic {
+                        anchor: (a.0, a.1),
+                        range: *r,
+                    }),
+                    Cell::DynamicFormulaNumber { r, .. } => Ok(CellStructure::SpillDynamic {
+                        anchor: (a.0, a.1),
+                        range: *r,
+                    }),
+                    Cell::DynamicFormulaString { r, .. } => Ok(CellStructure::SpillDynamic {
+                        anchor: (a.0, a.1),
+                        range: *r,
+                    }),
+                    Cell::DynamicFormulaError { r, .. } => Ok(CellStructure::SpillDynamic {
+                        anchor: (a.0, a.1),
+                        range: *r,
+                    }),
                     _ => Err("Spill cell does not reference an array formula".to_string()),
                 }
             }
-            _ => Ok(false),
+            _ => Ok(CellStructure::SingleCell),
         }
     }
 

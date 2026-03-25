@@ -34,6 +34,7 @@ fn set_simple_formula() {
     model
         .set_user_array_formula(0, 5, 1, 2, 2, "=1+1".to_string())
         .unwrap();
+    assert_eq!(model._get_text_at(0, 5, 2), "");
     model.evaluate();
 
     // check that the value is correctly set in the 4 cells
